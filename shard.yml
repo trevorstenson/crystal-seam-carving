@@ -1,0 +1,18 @@
+name: crystal_carve
+version: 0.1.0
+
+authors:
+  - trevorstenson <stenson124@gmail.com>
+
+dependencies:
+  stumpy_png:
+    github: stumpycr/stumpy_png
+    version: "~> 5.0"
+
+targets:
+  crystal_carve:
+    main: src/crystal_carve.cr
+
+crystal: 1.7.2
+
+license: MIT
