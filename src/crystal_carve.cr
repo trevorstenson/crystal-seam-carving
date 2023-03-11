@@ -4,78 +4,80 @@ module CrystalCarve
   VERSION = "0.1.0"
 
   record EnergyData, energy : Int128, previous_x : Int32
-  # record PixelData, r: Int32, g: Int32, b: Int32
+  record PixelData, r : UInt16, g : UInt16, b : UInt16
 
   alias Seam = Array({Int32, Int32})
 
   class Carver
-    @canvas : StumpyPNG::Canvas
-    @data : Array(Array(StumpyCore::RGBA))
-    @energies : Array(Array(EnergyData))
+    @data : Array(Array(PixelData)) = Array(Array(PixelData)).new
+    @energies : Array(Array(EnergyData)) = Array(Array(EnergyData)).new
 
-    def initialize(image_path : String)
-      @src = image_path
-      @canvas = StumpyPNG.read(image_path)
-      @data = Array(Array(StumpyCore::RGBA)).new
-      @energies = Array(Array(EnergyData)).new
-      reset_data
+    def initialize(data : Array(Array(PixelData)))
+      @data = data
+    end
+
+    def self.from_file(input_path : String)
+      data = Array(Array(PixelData)).new
+      canvas = StumpyPNG.read(input_path)
+      canvas.pixels.each_slice(canvas.width) do |row|
+        data << row.map { |pixel| PixelData.new(pixel.r, pixel.g, pixel.b) }
+      end
+      Carver.new(data)
     end
 
     def self.from_data(data : Array(Array(PixelData)))
-      
+      Carver.new(data)
     end
 
     def carve_by_ratio(ratio : Float, output_path : String)
-      iterations = @canvas.width - (@canvas.width * ratio).to_i
-      puts "Carving #{iterations} times"
-      carve_to_file(iterations, output_path)
+      iterations = @data[0].size - (@data[0].size * ratio).to_i
+      final_data = carve(iterations)
+      StumpyPNG.write(to_canvas(final_data), output_path)
+    end
+
+    def carve_by_ratio(ratio : Float)
+      iterations = @data[0].size - (@data[0].size * ratio).to_i
+      carve(iterations)
     end
 
     def carve_to_file(iterations : Int32, output_path : String)
-      carve(iterations)
-      StumpyPNG.write(@canvas, output_path)
+      final_data = carve(iterations)
+      StumpyPNG.write(to_canvas(final_data), output_path)
     end
 
-    def carve(iterations : Int32)
+    private def carve(iterations : Int32)
+      run_data = @data
       iterations.times do |i|
         create_energy_map
         seam = find_seam
-        @canvas = remove_seam(seam)
-        reset_data
+        run_data = remove_seam(run_data, seam)
       end
+      run_data
     end
 
-    private def reset_data
-      @data.clear
-      @canvas.pixels.each_slice(@canvas.width) do |row|
-        @data << row
+    private def to_canvas(data : Array(Array(PixelData)))
+      canvas = StumpyPNG::Canvas.new(data[0].size, data.size)
+      data.each_with_index do |row, y|
+        row.each_with_index do |pixel, x|
+          canvas[x, y] = StumpyCore::RGBA.new(pixel.r, pixel.g, pixel.b, UInt16::MAX)
+        end
       end
+      canvas
     end
 
-    private def copy_data
-      copy = Array(Array(StumpyCore::RGBA)).new
-      @data.each do |row|
-        copy << row.dup
-      end
-      copy
-    end
-
-    private def remove_seam(seam : Seam)
-      new_canvas = StumpyPNG::Canvas.new(@canvas.width - 1, @canvas.height)
-      copy = copy_data
-      copy.each_with_index do |row, y|
-        new_row = Array(StumpyCore::RGBA).new
+    private def remove_seam(data : Array(Array(PixelData)), seam : Seam)
+      new_data = Array(Array(PixelData)).new
+      data.each_with_index do |row, y|
+        new_row = Array(PixelData).new
         entry = seam[y]
         row.each_with_index do |pixel, x|
           if x != entry[0]
             new_row << pixel
           end
         end
-        new_row.each_with_index do |pixel, x|
-          new_canvas[x, y] = pixel
-        end
+        new_data << new_row
       end
-      new_canvas
+      new_data
     end
 
     def find_seam
@@ -112,7 +114,7 @@ module CrystalCarve
     end
 
     private def create_energy_map
-      @energies = Array(Array(EnergyData)).new
+      @energies.clear
       (0..@data.size - 1).each do |row|
         energy_row = Array(EnergyData).new
         (0..@data[row].size - 1).each do |col|
@@ -124,15 +126,15 @@ module CrystalCarve
       end
     end
 
-    private def calculate_energy(pixel : StumpyCore::RGBA, neighbors : Hash(String, StumpyCore::RGBA))
-      total_x = (neighbors["left"].r.to_i128 - neighbors["right"].r.to_i128).abs2
-      total_x += (neighbors["left"].g.to_i128 - neighbors["right"].g.to_i128).abs2
-      total_x += (neighbors["left"].b.to_i128 - neighbors["right"].b.to_i128).abs2
+    private def calculate_energy(pixel : PixelData, neighbors : Hash(String, PixelData))
+      total_x = neighbors["left"].r.to_i128 - neighbors["right"].r
+      total_x += neighbors["left"].g.to_i128 - neighbors["right"].g
+      total_x += neighbors["left"].b.to_i128 - neighbors["right"].b
 
-      total_y = (neighbors["top"].r.to_i128 - neighbors["bottom"].r.to_i128).abs2
-      total_y += (neighbors["top"].g.to_i128 - neighbors["bottom"].g.to_i128).abs2
-      total_y += (neighbors["top"].b.to_i128 - neighbors["bottom"].b.to_i128).abs2
-      total_x + total_y
+      total_y = neighbors["top"].r.to_i128 - neighbors["bottom"].r
+      total_y += neighbors["top"].g.to_i128 - neighbors["bottom"].g
+      total_y += neighbors["top"].b.to_i128 - neighbors["bottom"].b
+      (total_x + total_y).abs2
     end
 
     private def get_neighbors(x : Int32, y : Int32)
