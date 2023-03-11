@@ -4,6 +4,9 @@ module CrystalCarve
   VERSION = "0.1.0"
 
   record EnergyData, energy : Int128, previous_x : Int32
+  record PixelData, r: Int32, g: Int32, b: Int32
+
+  alias Seam = Array({Int32, Int32})
 
   class Carver
     @canvas : StumpyPNG::Canvas
@@ -15,15 +18,15 @@ module CrystalCarve
       @canvas = StumpyPNG.read(image_path)
       @data = Array(Array(StumpyCore::RGBA)).new
       @energies = Array(Array(EnergyData)).new
+      reset_data
+    end
 
-      # set up new 2d array of pixel data
-      @canvas.pixels.each_slice(@canvas.width) do |row|
-        @data << row
-      end
+    def self.from_data(data : Array(Array(PixelData)))
+      
     end
 
     def carve_by_ratio(ratio : Float, output_path : String)
-      iterations = (@canvas.width * ratio).to_i
+      iterations = @canvas.width - (@canvas.width * ratio).to_i
       puts "Carving #{iterations} times"
       carve_to_file(iterations, output_path)
     end
@@ -37,13 +40,15 @@ module CrystalCarve
       iterations.times do |i|
         create_energy_map
         seam = find_seam
-        updated = remove_seam(seam)
-        @canvas = updated
-        @data = Array(Array(StumpyCore::RGBA)).new
-        @canvas.pixels.each_slice(@canvas.width) do |row|
-          @data << row
-        end
-        # end refactor
+        @canvas = remove_seam(seam)
+        reset_data
+      end
+    end
+
+    private def reset_data
+      @data = Array(Array(StumpyCore::RGBA)).new
+      @canvas.pixels.each_slice(@canvas.width) do |row|
+        @data << row
       end
     end
 
@@ -55,7 +60,7 @@ module CrystalCarve
       copy
     end
 
-    private def remove_seam(seam : Array({Int32, Int32}))
+    private def remove_seam(seam : Seam)
       new_canvas = StumpyPNG::Canvas.new(@canvas.width - 1, @canvas.height)
       copy = copy_data
       copy.each_with_index do |row, y|
@@ -64,9 +69,6 @@ module CrystalCarve
         row.each_with_index do |pixel, x|
           if x != entry[0]
             new_row << pixel
-            # else
-            # mark pixel as red, remove later
-            # new_row << StumpyCore::RGBA.new(255, 0, 0, 255)
           end
         end
         new_row.each_with_index do |pixel, x|
@@ -100,7 +102,7 @@ module CrystalCarve
         @energies[y] = seam_energies_row
       end
       min_bottom_row_idx = prev_energies.each_with_index.min_by { |e, i| e.energy }[1]
-      seam = Array({Int32, Int32}).new
+      seam = Seam.new
       seam_point_x = min_bottom_row_idx
       (@energies.size - 1).downto(0) do |y|
         seam << {seam_point_x, y}
