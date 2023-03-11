@@ -4,7 +4,7 @@ module CrystalCarve
   VERSION = "0.1.0"
 
   record EnergyData, energy : Int128, previous_x : Int32
-  record PixelData, r: Int32, g: Int32, b: Int32
+  # record PixelData, r: Int32, g: Int32, b: Int32
 
   alias Seam = Array({Int32, Int32})
 
@@ -46,7 +46,7 @@ module CrystalCarve
     end
 
     private def reset_data
-      @data = Array(Array(StumpyCore::RGBA)).new
+      @data.clear
       @canvas.pixels.each_slice(@canvas.width) do |row|
         @data << row
       end
